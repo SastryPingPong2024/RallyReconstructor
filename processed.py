@@ -4,8 +4,10 @@ import os
 
 from utils.general import *
 from utils.render import render
-from utils.hom import transform
+from utils.table import load_table_data, transform 
+from utils.camera import calibrate_camera_from_bounds
 from utils.ball import load_ball_data, process_ball_data, interpolate_parabolic_trajectory, adjust_trajectory
+from utils.optimize_ball import reconstruct_ball_trajectories
 from utils.pose import load_pose_data, get_player_ids, get_player_data, get_player_rs, get_rotation_matrix
 # from utils.audio import create_audio_file, get_times
 
@@ -26,12 +28,13 @@ class ProcessedVideo:
         self.path = video_path
         self.name = os.path.splitext(os.path.basename(video_path))[0]
         self.dir_name = os.path.dirname(video_path)
-        self.frames, self.fps = load_frames(video_path)
+        self.frames, self.fps, self.frame_size = load_frames(video_path)
         self.num_frames = len(self.frames)
         self.rescale_factors = rescale_factors
         
         # Table Tracking
-        self.homs_table, self.homs = load_table_data(self.name, video_dir, self.frames, verbose=verbose)  # homography matrices
+        self.homs_table, self.homs, self.table_bounds, self.base_bounds = load_table_data(self.name, video_dir, self.frames, verbose=verbose)  # homography matrices
+        self.camera_matrix, self.cam_rmats, self.cam_tvecs = calibrate_camera_from_bounds(self.table_bounds, self.base_bounds, self.frame_size)
 
         # Paddle Tracking
         self.paddle_positions = load_paddle_data(self.name, video_dir)
@@ -54,6 +57,7 @@ class ProcessedVideo:
             verbose=verbose
         )
         self.set_ball()
+        reconstruct_ball_trajectories(self)
         
         self.num_frames_usable = last_none_start(self.ball)
         if self.num_frames_usable == -1: 
@@ -152,10 +156,17 @@ class ProcessedVideo:
             midpoint_2d = np.array([midpoint_2d[0], midpoint_2d[1], 0])
             midpoint_3d = (feet_3d[1] + feet_3d[0]) / 2
             
-            # Rotate the positions
+            # Rotate the positions         
             positions = player_joints[i]
             positions = positions - midpoint_3d
             positions = positions @ R[i].T
+            # P = np.array([[-1, 0, 0], 
+            #               [ 0, 0, 1], 
+            #               [ 0, 1, 0]])
+            # E = np.array([[-1, 0, 0], 
+            #               [ 0,-1, 0], 
+            #               [ 0, 0, 1]]) 
+            # positions = positions @ P @ E @ self.cam_rmats[i] @ P
             positions += np.array([0, 0, -np.min(positions[:, 2])])
             
             # Rescale and translate the positions
@@ -193,7 +204,7 @@ class ProcessedVideo:
             else:
                 ball_pos = None
             ball_positions.append(ball_pos) 
-        ball_positions = adjust_trajectory(ball_positions, self.player1_hits, self.player2_hits, self.bounces, alpha=0.5)    
+        ball_positions = adjust_trajectory(ball_positions, self.player1_hits, self.player2_hits, self.bounces, alpha=0.0)    
         ball_positions = interpolate_parabolic_trajectory(ball_positions, self.fps)
         self.ball = ball_positions
         
@@ -299,11 +310,11 @@ class ProcessedVideoPartial:
         self.path = video_path
         self.name = os.path.splitext(os.path.basename(video_path))[0]
         self.dir_name = os.path.dirname(video_path)
-        self.frames, self.fps = load_frames(video_path)
+        self.frames, self.fps, self.frame_size = load_frames(video_path)
         self.num_frames = len(self.frames)
         
         # Table Tracking
-        self.homs_table, self.homs = load_table_data(self.name, video_dir, self.frames)  # homography matrices
+        self.homs_table, self.homs, self.table_bounds, self.base_bounds = load_table_data(self.name, video_dir, self.frames)  # homography matrices
         
         # Paddle Tracking
         self.paddle_positions = load_paddle_data(self.name, video_dir)

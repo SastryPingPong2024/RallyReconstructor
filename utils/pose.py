@@ -2,7 +2,7 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 
-from .hom import transform
+from .table import transform
 from .general import dist
 
 def load_pose_data(video_name, pose_dir):

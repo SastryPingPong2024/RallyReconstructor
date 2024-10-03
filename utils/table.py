@@ -1,7 +1,62 @@
 import numpy as np
 import cv2
-
 import matplotlib.pyplot as plt
+import csv
+import codecs
+from scipy.ndimage import median_filter
+
+def median_smoothing(array, window_size):
+    """
+    Apply median smoothing to an array.
+
+    Args:
+        array (np.ndarray): Input array.
+        q (int): Smoothing parameter.
+
+    Returns:
+        np.ndarray: Smoothed array.
+    """
+    smoothed_array = median_filter(array, size=(window_size, 1), mode='reflect')
+    return smoothed_array.astype(int)
+
+def load_table_data(video_name, table_dir, frames, verbose=False):
+    """
+    Load table data from CSV files.
+
+    Args:
+        video_name (str): Name of the video.
+        table_dir (str): Directory containing table data CSV files.
+        verbose (bool, optional): Whether to print detailed information. Defaults to False.
+        orig_frames (np.ndarray, optional): Original video frames. Defaults to None.
+
+    Returns:
+        tuple: Two lists containing homography matrices.
+    """
+    table_path = f"{table_dir}/{video_name}_table.csv"
+    homs_table, homs = [], []
+    
+    data = []
+    with open(table_path, "r") as table_file:
+        csv_reader = csv.reader(table_file)
+        header = csv_reader.__next__()
+        for row in csv_reader:
+            row = list(map(float, row))
+            data.append(row)
+    
+    data = np.array(data)   
+    data[:, 1:] = median_smoothing(data[:, 1:], 50)
+     
+    table_boundaries, base_boundaries = [], []
+    n = len(frames)
+    for i in range(n):
+        row = data[i]
+        boundary = np.array(row[1:9]).reshape(4, 2)
+        table_boundaries.append(np.array(row[1:13]).reshape(6, 2))
+        H1, H2, base_boundary = get_homography_matrix(boundary, row[13], row[14], verbose=(verbose and i in [0, n-1]), orig_frame=frames[i])
+        base_boundaries.append(base_boundary)
+        homs_table.append(H1)
+        homs.append(H2)
+    return homs_table, homs, table_boundaries, base_boundaries
 
 def find_intersection(p0, p1, p2, p3):
     x0, y0 = p0
@@ -81,7 +136,7 @@ def get_homography_matrix(table_boundary, table_base, table_indent, verbose=Fals
         plt.show()
         plt.close()
     
-    return H, H_base
+    return H, H_base, base_boundary
 
 def transform(pts, H):
     if pts.shape == (2,): pts = [pts]

@@ -2,7 +2,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt     
 from .parabola import fit_parabola
-from .hom import transform
+from .table import transform
 
 def load_ball_data(video_name, ball_dir):
     ball_data_path = f"{ball_dir}/{video_name}_ball.csv"
@@ -135,8 +135,11 @@ def adjust_bounces(player1_hits, player2_hits, bounces, y):
     res = np.concatenate((res, fit_parabola(y[h1:h2+1], bounces[(h1<bounces) & (bounces<h2)] - h1, num_segments=2) + h1))
     for h in hits[2:]:
         h1, h2 = h2, h
-        res = np.concatenate((res, fit_parabola(y[h1:h2+1], bounces[(h1<bounces) & (bounces<h2)] - h1, num_segments=1) + h1))
-    return res.astype(int)
+        try:
+            res = np.concatenate((res, fit_parabola(y[h1:h2+1], bounces[(h1<bounces) & (bounces<h2)] - h1, num_segments=1) + h1))
+        except Exception as e:
+            return res.astype(int), player1_hits[player1_hits <= h1], player2_hits[player2_hits <= h1]
+    return res.astype(int), player1_hits, player2_hits
 
 def differentiate(points, order=1):
     n = len(points)
@@ -149,6 +152,12 @@ def differentiate(points, order=1):
             gradients[i] = (points[r] - 2*points[i] + points[l]) / (r - l)**2
     return gradients
 
+def prune_hits(hits, not_pot_hits):
+    for k in range(1, len(hits)):
+        if not any(hits[k]-i in not_pot_hits for i in range(1, 5)):
+            return hits[:k]
+    return hits 
+            
 def process_ball_data(points, p1_hand, p2_hand, homs_table, verbose=False):    
     # Load and transform the data
     points = points.copy()
@@ -180,12 +189,12 @@ def process_ball_data(points, p1_hand, p2_hand, homs_table, verbose=False):
     p2_hit_idxs = find_hit_points_from_hand_dists(p2_hand_dists)
 
     # Merge both sets of potential hit points
-    p1_hit_idxs = discrete_projection(p1_hit_idxs, p1_pot_hit_idxs)
-    p2_hit_idxs = discrete_projection(p2_hit_idxs, p2_pot_hit_idxs)
+    p1_hit_idxs = prune_hits(discrete_projection(p1_hit_idxs, p1_pot_hit_idxs), p2_pot_hit_idxs)
+    p2_hit_idxs = prune_hits(discrete_projection(p2_hit_idxs, p2_pot_hit_idxs), p1_pot_hit_idxs)
     
     # Finalize the hit/bounce points
     p1_hit_idxs, p2_hit_idxs = adjust_hits(p1_hit_idxs, p2_hit_idxs, p1_hand_dists, p2_hand_dists)
-    bounce_idxs = adjust_bounces(p1_hit_idxs, p2_hit_idxs, bounce_idxs, y_smoothed)
+    bounce_idxs, p1_hit_idxs, p2_hit_idxs = adjust_bounces(p1_hit_idxs, p2_hit_idxs, bounce_idxs, y_smoothed)
 
     if verbose:        
         y = y_smoothed
@@ -198,6 +207,7 @@ def process_ball_data(points, p1_hand, p2_hand, homs_table, verbose=False):
         plt.gca().invert_yaxis()
         plt.legend()
         plt.show()
+        
         
     if len(p1_hit_idxs) + len(p2_hit_idxs) < 3:
         raise ValueError("Not enough of hit points detected.")

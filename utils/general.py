@@ -4,7 +4,7 @@ import numpy as np
 import codecs
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
-from .hom import get_homography_matrix
+from .table import get_homography_matrix
 
 def last_none_start(arr):
     """
@@ -56,7 +56,9 @@ def load_frames(video_path):
     if not cap.isOpened():
         raise ValueError(f"Cannot open video file: {video_path}")
     fps = cap.get(cv2.CAP_PROP_FPS) 
-
+    frame_width, frame_height = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_size = (frame_width, frame_height)
+    
     frames = []
     while True:
         ret, frame = cap.read()
@@ -65,7 +67,7 @@ def load_frames(video_path):
         frames.append(frame)
     cap.release()
     
-    return np.array(frames), fps
+    return np.array(frames), fps, frame_size
 
 def load_table_data(video_name, table_dir, frames, verbose=False):
     """
@@ -91,27 +93,18 @@ def load_table_data(video_name, table_dir, frames, verbose=False):
             row = list(map(float, row))
             data.append(row)
     
-    data = np.array(data)
-    k = 0
-    while True:
-        if (data[k][1:9] == 0).all():
-            k += 1
-        else:
-            break
-    data[:k] = data[k]
-    
-    data[:, 1:9] = median_smoothing(data[:, 1:9], 45)
-    
+    data = np.array(data)    
+    table_boundaries, base_boundaries = [], []
     n = len(frames)
     for i in range(n):
         row = data[i]
         boundary = np.array(row[1:9]).reshape(4, 2)
-        base = row[9]
-        indent = row[10]
-        H1, H2 = get_homography_matrix(boundary, base, indent, verbose=(verbose and i in [0, n-1]), orig_frame=frames[i])
+        table_boundaries.append(np.array(row[1:13]).reshape(6, 2))
+        H1, H2, base_boundary = get_homography_matrix(boundary, row[13], row[14], verbose=(verbose and i in [0, n-1]), orig_frame=frames[i])
+        base_boundaries.append(base_boundary)
         homs_table.append(H1)
         homs.append(H2)
-    return homs_table, homs
+    return homs_table, homs, table_boundaries, base_boundaries
 
 def load_paddle_data(video_name, paddle_dir):
     """
