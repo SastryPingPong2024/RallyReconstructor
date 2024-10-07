@@ -110,30 +110,9 @@ def reconstruct_ball_trajectories(vid):
         t_cams = [vid.cam_tvecs[frame_idx][:, 0] for frame_idx in range(t1, t2+1)]
 
         # Initial guess for parameters
-        initial_guess = np.array([
-            0.5        # Air resistance coefficient (1/s)
-        ])
-
-        # Bounds for parameters (physical constraints)
-        lower_bounds = [
-            0              # Air resistance coefficient >= 0
-        ]
-
-        upper_bounds = [
-            5.0             # Air resistance coefficient <= 10
-        ]
-
-        # Perform optimization
-        result = least_squares(
-            residuals,
-            initial_guess,
-            bounds=(lower_bounds, upper_bounds),
-            args=(t_obs, observed_2d_points, K, Rs, t_cams, known_3d_points),
-            verbose=0  # Set to 2 for detailed output, 0 for none
-        )
-
-        optimized_params = result.x
-        air_resistance_opt = optimized_params[0]
+        rng = np.arange(0.0001, 10.0, 0.05)
+        res = [np.mean(abs(residuals([a], t_obs, observed_2d_points, K, Rs, t_cams, known_3d_points))) for a in rng]
+        air_resistance_opt = rng[np.argmin(res)]
 
         # Simulate optimized trajectory
         x0, y0, z0 = known_3d_points[0]

@@ -49,7 +49,6 @@ def process_match(match_folder, root_dir):
             print(e)
 
     mu1, mu2 = gaussian_mixture_analysis(np.array(r).reshape(-1, 2))
-    print(mu1, mu2)
     for video_folder in os.listdir(full_match_path):
         try:            
             save_reconstruction(root_dir, match_folder, video_folder, rescale_factors=[mu1, mu2])
